@@ -23,10 +23,18 @@ def parse_number(text):
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(viewport={'width': 1920, 'height': 1080})
+        # 브라우저 생성 시 차단 방지 옵션 추가
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"]
+        )
+        # 실제 일반 크롬 브라우저 사용자 환경으로 위장 (User-Agent 설정)
+        context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
         page = context.new_page()
-        page.set_default_timeout(60000)
+        page.set_default_timeout(30000)
 
         results = []
 
@@ -34,17 +42,17 @@ def run():
         # 1. 이지포스
         # -------------------------------------------------------------
         try:
-            print("[1/3] 이지포스 접속 및 로그인 시도 중...")
-            page.goto("https://smart.easypos.net/index.jsp", wait_until="domcontentloaded")
-            page.wait_for_timeout(3000)
-
+            print("[1/3] 이지포스 수집 중...")
+            page.goto("https://smart.easypos.net/index.jsp", wait_until="commit")
+            page.wait_for_selector("input[name='txtUSER_ID']", timeout=15000)
+            
             page.fill("input[name='txtUSER_ID']", EASYPOS_ID)
             page.fill("input[name='txtPWD']", EASYPOS_PW)
             page.click("a#btnLogin")
-            page.wait_for_timeout(5000)
-
-            page.goto("https://smart.easypos.net/servlet/EasyPos.SvtSls01001", wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
+
+            page.goto("https://smart.easypos.net/servlet/EasyPos.SvtSls01001", wait_until="commit")
+            page.wait_for_selector("table tbody tr", timeout=15000)
 
             rows = page.locator("table tbody tr").all()
             for row in rows:
@@ -55,7 +63,7 @@ def run():
                         net_sales = parse_number(cols[4].inner_text())
                         results.append(["이지포스", store_name, net_sales, 0, 0, 0, 0, 0])
 
-            print(f"이지포스 완료: {len(results)}개 매장 수집")
+            print(f"이지포스 완료: {len(results)}개 매장")
 
         except Exception as e:
             print(f"이지포스 수집 에러: {e}")
@@ -64,16 +72,16 @@ def run():
         # 2. 비버 매장연구소
         # -------------------------------------------------------------
         try:
-            print("[2/3] 비버 접속 및 로그인 시도 중...")
-            page.goto("https://biz.beaverworksinc.com/login", wait_until="domcontentloaded")
-            page.wait_for_timeout(3000)
+            print("[2/3] 비버 수집 중...")
+            page.goto("https://biz.beaverworksinc.com/login", wait_until="commit")
+            page.wait_for_selector("input[type='text']", timeout=15000)
 
             page.fill("input[type='text']", BEAVER_ID)
             page.fill("input[type='password']", BEAVER_PW)
             page.click("button:has-text('로그인')")
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(3000)
 
-            page.goto("https://biz.beaverworksinc.com/sales/store-sales", wait_until="domcontentloaded")
+            page.goto("https://biz.beaverworksinc.com/sales/store-sales", wait_until="commit")
             page.wait_for_timeout(3000)
 
             if page.locator("button:has-text('오늘')").is_visible():
@@ -98,9 +106,9 @@ def run():
         # 3. CPlat 브랜드 인사이트
         # -------------------------------------------------------------
         try:
-            print("[3/3] CPlat 접속 및 로그인 시도 중...")
-            page.goto("https://brand-insight.cplat.io/login", wait_until="domcontentloaded")
-            page.wait_for_timeout(3000)
+            print("[3/3] CPlat 수집 중...")
+            page.goto("https://brand-insight.cplat.io/login", wait_until="commit")
+            page.wait_for_selector("input", timeout=15000)
 
             inputs = page.locator("input")
             inputs.nth(0).fill(CPLAT_BRAND_CODE)
@@ -108,13 +116,18 @@ def run():
             inputs.nth(2).fill(CPLAT_PW)
 
             page.click("button:has-text('로그인')")
-            page.wait_for_timeout(5000)
-
-            page.goto("https://brand-insight.cplat.io/sales/daily", wait_until="domcontentloaded")
             page.wait_for_timeout(3000)
 
+            page.goto("https://brand-insight.cplat.io/sales/daily", wait_until="commit")
+            page.wait_for_timeout(3000)
+
+            store_name = "CPlat 매장"
+            header_store_btn = page.locator("header div").filter(has_text=re.compile(r"오크베리|점")).last
+            if header_store_btn.is_visible():
+                store_name = header_store_btn.inner_text().strip().split('\n')[0].strip()
+
             sales_text = page.locator("div:has-text('결제금액') + div").first.inner_text()
-            results.append(["CPlat", "CPlat 매장", parse_number(sales_text), 0, 0, 0, 0, 0])
+            results.append(["CPlat", store_name, parse_number(sales_text), 0, 0, 0, 0, 0])
             print("CPlat 수집 완료")
 
         except Exception as e:
@@ -122,9 +135,8 @@ def run():
 
         browser.close()
 
-        # 구글 시트 전송
         if results:
-            print(f"총 {len(results)}건의 데이터를 구글 시트로 전송 중...")
+            print(f"총 {len(results)}건의 데이터 구글 시트로 전송 중...")
             res = requests.post(WEBHOOK_URL, json=results)
             print(f"전송 결과: {res.text}")
         else:

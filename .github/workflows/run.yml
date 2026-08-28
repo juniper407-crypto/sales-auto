@@ -2,8 +2,8 @@ name: Sales Collector Bot
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # 30분마다 자동 실행
-  workflow_dispatch: # 수동 실행 버튼
+    - cron: '0 23 * * *' # 매일 한국 시간 아침 8시 실행 (UTC 23:00)
+  workflow_dispatch:
 
 jobs:
   run-collector:
@@ -30,6 +30,7 @@ jobs:
         EASYPOS_PW: ${{ secrets.EASYPOS_PW }}
         BEAVER_ID: ${{ secrets.BEAVER_ID }}
         BEAVER_PW: ${{ secrets.BEAVER_PW }}
+        CPLAT_BRAND_CODE: ${{ secrets.CPLAT_BRAND_CODE }}
         CPLAT_ID: ${{ secrets.CPLAT_ID }}
         CPLAT_PW: ${{ secrets.CPLAT_PW }}
       run: python main.py

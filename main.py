@@ -26,7 +26,7 @@ def run():
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(viewport={'width': 1920, 'height': 1080})
         page = context.new_page()
-        page.set_default_timeout(60000) # 타임아웃 60초로 연장
+        page.set_default_timeout(60000)
 
         results = []
 
